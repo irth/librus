@@ -1,26 +1,31 @@
 require 'curb'
+require 'nokogiri'
+
+class Subject
+  attr_accessor :name
+  def to_s
+    @name
+  end
+end
 
 class Librus
   attr_accessor :cookie
-  def initialize
-    @cookie = nil
-  end
 
-  def set_curl_headers(curl)
+  def configure_curl(curl, referer=nil, content_type=nil)
     curl.headers['User-Agent'] = 'Mozilla/5.0 (X11; Linux x86_64; rv:50.0) Gecko/20100101 Firefox/50.0'
     curl.headers['Accept'] = 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
     curl.headers['Accept-Language'] = 'en-US,en;q=0.5'
     curl.headers['Cache-Control'] = 'no-cache'
-    curl.headers['Referer'] = 'https://synergia.librus.pl/loguj'
     curl.headers['Cookie'] = 'TestCookie=1;' + @cookie.to_s
     curl.headers['Upgrade-Insecure-Requests'] = '1'
+    curl.headers['Referer'] = referer unless referer == nil
+    curl.headers['Content-Type'] = content_type unless content_type == nil
+    curl.follow_location = false
   end
 
   def login(user, password)
     curl = Curl::Easy.new('https://synergia.librus.pl/loguj')
-    set_curl_headers curl
-    curl.headers['Content-Type'] = 'application/x-www-form-urlencoded'
-    curl.follow_location = false
+    configure_curl curl, 'https://synergia.librus.pl/loguj', 'application/x-www-form-urlencoded'
 
     curl.on_header {|data|
       if data =~ /Set-Cookie: DZIENNIK/
@@ -35,7 +40,7 @@ class Librus
       if easy.redirect_url == 'https://synergia.librus.pl/uczen_index'
         yield true
       else
-        @cookie = ''
+        @cookie = nil
         yield false
       end
     }
@@ -43,9 +48,42 @@ class Librus
     #TODO: use some lib to urlencode it properly
     curl.http_post("login=#{user}&passwd=#{password}&czy_js=1")
   end
+
+  def get_schedule
+    if @cookie == nil
+      # not logged in
+      yield false, nil
+      return
+    end
+
+    schedule = Array.new(7)
+    schedule.each_index do |i|
+      schedule[i] = Array.new
+    end
+
+    curl = Curl::Easy.new('https://synergia.librus.pl/przegladaj_plan_lekcji')
+    configure_curl curl, 'https://synergia.librus.pl/uczen_index'
+
+    curl.on_complete do |easy|
+      page = Nokogiri::HTML(easy.body_str)
+      page.css('table.plan-lekcji tr.line1').each_with_index do |tr, hour|
+        tr.css('td')[1..-2].each_with_index do |td, weekday|
+          # 160.chr is a non-breaking space
+          if td.inner_html.to_s.strip.gsub(160.chr("utf-8"), '') != ''
+            s = Subject.new
+            s.name = td.css('b').inner_html
+            schedule[weekday][hour] = s
+          end
+        end
+      end
+      yield true, schedule
+    end
+
+    curl.http_get
+  end
 end
 
 l=Librus.new
 l.login "irth", gets.strip do |result|
-  puts "cookie:#{l.cookie.strip}, result:#{result}"
+  l.get_schedule {|success, schedule| puts schedule if success}
 end
