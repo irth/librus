@@ -82,4 +82,46 @@ class Librus
 
     curl.http_get
   end
+
+  def get_announcements
+    if @cookie == nil
+      # not logged in
+      yield false, nil
+      return
+    end
+
+    schedule = Array.new(7)
+    schedule.each_index do |i|
+      schedule[i] = Array.new
+    end
+
+    curl = Curl::Easy.new('https://synergia.librus.pl/ogloszenia')
+    configure_curl curl, 'https://synergia.librus.pl/uczen_index'
+
+    curl.on_complete do |easy|
+      page = Nokogiri::HTML(easy.body_str)
+
+      titles = page.css('form[name=formOgloszenia] > table > thead > tr > td')
+      contents  = page.css('form[name=formOgloszenia] tr.line1 td')
+
+      attachments = []
+      titles.reverse.each_with_index do |title, i|
+        n = titles.length - 1 - i
+        title = title.text.strip
+        author = contents[2*n].text.strip
+        content = contents[2*n+1].inner_html.strip
+        puts content
+        attachments.push ({
+            :title => title,
+            :author => author,
+            :content =>  content
+        })
+      end
+      yield true, attachments
+    end
+
+    curl.on_failure {yield false}
+
+    curl.http_get
+  end
 end
