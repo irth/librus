@@ -110,7 +110,6 @@ class Librus
         title = title.text.strip
         author = contents[2*n].text.strip
         content = contents[2*n+1].inner_html.strip
-        puts content
         attachments.push ({
             :title => title,
             :author => author,
