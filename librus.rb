@@ -19,13 +19,13 @@ class Librus
     curl.headers['Cookie'] = 'TestCookie=1;' + @cookie.to_s
     curl.headers['Upgrade-Insecure-Requests'] = '1'
     curl.headers['Referer'] = referer unless referer == nil
-    curl.headers['Content-Type'] = content_type unless content_type == nil
+    curl.multipart_form_post = false
     curl.follow_location = false
   end
 
   def login(user, password)
     curl = Curl::Easy.new('https://synergia.librus.pl/loguj')
-    configure_curl curl, 'https://synergia.librus.pl/loguj', 'application/x-www-form-urlencoded'
+    configure_curl curl, 'https://synergia.librus.pl/loguj'
 
     curl.on_header {|data|
       if data =~ /Set-Cookie: DZIENNIK/
@@ -45,8 +45,9 @@ class Librus
       end
     }
 
-    #TODO: use some lib to urlencode it properly
-    curl.http_post("login=#{user}&passwd=#{password}&czy_js=1")
+    curl.http_post(Curl::PostField.content('login', user),
+                   Curl::PostField.content('passwd', password),
+                   Curl::PostField.content('czy_js', 1))
   end
 
   def get_schedule
@@ -81,9 +82,4 @@ class Librus
 
     curl.http_get
   end
-end
-
-l=Librus.new
-l.login "irth", gets.strip do |result|
-  l.get_schedule {|success, schedule| puts schedule if success}
 end
